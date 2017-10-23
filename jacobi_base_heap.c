@@ -25,11 +25,14 @@
 #define MAXWORKERS 20  /* maximum number of worker threads */
 #define EPSILON 0.001 /* threshold for convergence */
 
+//Stolen from jacobi-deq2.c
+#define IDX(x, i, j) ((i)*(x)+(j))
+
 void *Worker(void *);
 void InitializeGrids();
 void Barrier();
 
-struct tms buffer;        /* used for timing */
+//struct tms buffer;        /* used for timing */
 clock_t start, finish;
 
 pthread_mutex_t barrier;  /* mutex semaphore for the barrier */
@@ -38,11 +41,9 @@ int numArrived = 0;       /* count of the number who have arrived */
 
 int gridSize, numWorkers, numIters, stripSize;
 double maxDiff[MAXWORKERS];
-//double grid1[MAXGRID][MAXGRID];
-//double grid2[MAXGRID][MAXGRID];
 
-double** grid1;
-double** grid2;
+double* grid1;
+double* grid2;
 
 double maxdiff;
 
@@ -70,21 +71,16 @@ int main(int argc, char* argv[]) {
   pthread_cond_init(&go, NULL);
 
   /* read command line and initialize grids */
-  gridSize = atoi(argv[1]);
+  gridSize = atoi(argv[1]) + 2;
   numWorkers = atoi(argv[2]);
 
-  grid1 = malloc(sizeof(double*) * (gridSize + 3));
-  grid2 = malloc(sizeof(double*) * (gridSize + 3));
-
-  for(int i = 0; i < gridSize + 2; i++) {
-    grid1[i] = malloc(sizeof(double) * (gridSize + 3));
-    grid2[i] = malloc(sizeof(double) * (gridSize + 3));
-  }
+  grid1 = malloc(sizeof(double*) * (gridSize) * (gridSize));
+  grid2 = malloc(sizeof(double*) * (gridSize)  * (gridSize));
   
-  stripSize = gridSize/numWorkers;
+  stripSize = (gridSize-2)/numWorkers;
   InitializeGrids();
 
-  start = times(&buffer);
+  start = clock();
   /* create the workers, then wait for them to finish */
   printf("Create the worker threads\n");
   for (i = 0; i < numWorkers; i++)
@@ -96,25 +92,21 @@ int main(int argc, char* argv[]) {
   for (i = 0; i < numWorkers; i++)
     pthread_join(workerid[i], NULL);
 
-  finish = times(&buffer);
+  finish = clock();
   /* print the results */
   
   printf("number of iterations:  %d\nmaximum difference:  %e\n",
           numIters, maxdiff);
   printf("start:  %ld   finish:  %ld\n", start, finish);
-  printf("elapsed time:  %ld\n", finish-start);
+  printf("elapsed time:  %f seconds\n", (double) (finish-start) / CLOCKS_PER_SEC);
   results = fopen("results", "w");
-  for (i = 1; i <= gridSize; i++) {
-    for (j = 1; j <= gridSize; j++) {
-      fprintf(results, "%f ", grid2[i][j]);
+  for (i = 1; i < gridSize-1; i++) {
+    for (j = 1; j < gridSize-1; j++) {
+      fprintf(results, "%f ", grid2[IDX(gridSize,i,j)]);
     }
     fprintf(results, "\n");
   }
 
-  for(int i = 0; i < gridSize + 2; i++) {
-    free(grid1[i]);
-    free(grid2[i]);
-  }
   free(grid1);
   free(grid2);
   
@@ -137,26 +129,26 @@ void *Worker(void *arg) {
   first = myid * stripSize + 1;
 
   if(myid == numWorkers-1)
-    last = gridSize;
+    last = gridSize-1;
   else
     last = first + stripSize - 1;
   
   while (maxdiff > EPSILON) {
     /* update my points */
-    for (i = first; i <= last; i++) {
-      for (j = 1; j <= gridSize; j++) {
-        grid2[i][j] = (grid1[i-1][j] + grid1[i+1][j] + 
-          grid1[i][j-1] + grid1[i][j+1]) * 0.25;
+    for (i = first; i < last; i++) {
+      for (j = 1; j < gridSize-1; j++) {
+        grid2[IDX(gridSize,i,j)] = (grid1[IDX(gridSize,i-1,j)] + grid1[IDX(gridSize,i+1,j)] + 
+				    grid1[IDX(gridSize,i,j-1)] + grid1[IDX(gridSize,i,j+1)]) * 0.25;
       }
     }
     Barrier();
     /* update my points again */
     localDiff = 0.0;
-    for (i = first; i <= last; i++) {
-      for (j = 1; j <= gridSize; j++) {
-        grid1[i][j] = (grid2[i-1][j] + grid2[i+1][j] +
-          grid2[i][j-1] + grid2[i][j+1]) * 0.25;
-        temp = grid1[i][j] - grid2[i][j];
+    for (i = first; i < last; i++) {
+      for (j = 1; j < gridSize-1; j++) {
+        grid1[IDX(gridSize,i,j)] = (grid2[IDX(gridSize,i-1,j)] + grid2[IDX(gridSize,i+1,j)] + 
+				    grid2[IDX(gridSize,i,j-1)] + grid2[IDX(gridSize,i,j+1)]) * 0.25;
+        temp = grid1[IDX(gridSize,i,j)] - grid2[IDX(gridSize,i,j)];
         if (temp < 0) {
           temp *= -1;
         }
@@ -185,22 +177,22 @@ void InitializeGrids() {
   /* initialize the grids (grid1 and grid2)
      set boundaries to 1.0 and interior points to 0.0  */
   int i, j;
-  for (i = 0; i <= gridSize+1; i++)
-    for (j = 0; j <= gridSize+1; j++) {
-      grid1[i][j] = 0.0;
-      grid2[i][j] = 0.0;
+  for (i = 1; i < gridSize-1; i++)
+    for (j = 1; j < gridSize-1; j++) {
+      grid1[IDX(gridSize,i,j)] = 0.0;
+      grid2[IDX(gridSize,i,j)] = 0.0;
     }
-  for (i = 0; i <= gridSize+1; i++) {
-    grid1[i][0] = 1.0;
-    grid1[i][gridSize+1] = 1.0;
-    grid2[i][0] = 1.0;
-    grid2[i][gridSize+1] = 1.0;
+  for (i = 0; i < gridSize; i++) {
+    grid1[IDX(gridSize,i,0)] = 1.0;
+    grid1[IDX(gridSize,i,gridSize-1)] = 1.0;
+    grid2[IDX(gridSize,i,0)] = 1.0;
+    grid2[IDX(gridSize,i,gridSize-1)] = 1.0;
   }
-  for (j = 0; j <= gridSize+1; j++) {
-    grid1[0][j] = 1.0;
-    grid2[0][j] = 1.0;
-    grid1[gridSize+1][j] = 1.0;
-    grid2[gridSize+1][j] = 1.0;
+  for (j = 0; j < gridSize; j++) {
+    grid1[IDX(gridSize,0,j)] = 1.0;
+    grid2[IDX(gridSize,0,j)] = 1.0;
+    grid1[IDX(gridSize,gridSize-1,j)] = 1.0;
+    grid2[IDX(gridSize,gridSize-1,j)] = 1.0;
   }
 }
 
