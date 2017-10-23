@@ -116,7 +116,10 @@ void *Worker(void *arg) {
 
   /* determine first and last rows of my strip of the grids */
   first = myid * stripSize + 1;
-  last = first + stripSize - 1;
+  if(myid == numWorkers-1)
+    last = gridSize;
+  else
+    last = first + stripSize - 1;
   
   while (maxdiff > EPSILON) {
     /* update my points */

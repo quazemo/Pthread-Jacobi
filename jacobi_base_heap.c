@@ -11,6 +11,8 @@
   
   Base code provided by Dr. Michael Meehan;
   edited for experimentation purposes
+
+  Modified 10/22/2017 by Alexander Lee
 */
 
 #define _REENTRANT
@@ -132,7 +134,7 @@ void *Worker(void *arg) {
   if(myid == numWorkers-1)
     last = gridSize-1;
   else
-    last = first + stripSize - 1;
+    last = first + stripSize;
   
   while (maxdiff > EPSILON) {
     /* update my points */
