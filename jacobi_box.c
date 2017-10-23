@@ -143,7 +143,7 @@ int main(int argc, char* argv[]) {
     t_args[0]->id = 0;
     t_args[0]->j_init[k] = j_i;
     t_args[0]->j_fin[k] = j_f;
-    printf("k = %d, j_i = %d, j_f = %d\n", k, j_i, j_f);
+    //printf("k = %d, j_i = %d, j_f = %d\n", k, j_i, j_f);
   }
   for(k = 1; k < numWorkers; k++){
     t_args[k]->id = k;
@@ -151,12 +151,14 @@ int main(int argc, char* argv[]) {
     memcpy(&(t_args[k]->j_fin[0]), &(t_args[0]->j_fin[0]), sizeof(int) * numWorkers);
   }
 
+  /*
   for(k = 0; k < numWorkers; k++){
     printf("id = %ld\n", t_args[k]->id);
     for(int n = 0; n < numWorkers; n++)
       printf("j_i = %d j_f = %d\n", t_args[k]->j_init[n], t_args[k]->j_fin[n]);
     printf("\n");
   }
+  */
 
   clock_gettime(CLOCK_MONOTONIC, &start);
   /* create the workers, then wait for them to finish */
