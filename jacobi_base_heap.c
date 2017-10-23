@@ -1,7 +1,7 @@
 /* Jacobi iteration using pthreads
 
    usage on Linux:
-     gcc jacobi.c -lpthread -o jacobi
+     gcc -g -Wall jacobi_base_heap.c -lpthread -o jacobi-heap
      jacobi gridSize numWorkers
   
   Brendan Baalke
@@ -33,7 +33,8 @@ void InitializeGrids();
 void Barrier();
 
 //struct tms buffer;        /* used for timing */
-clock_t start, finish;
+struct timespec start, finish;
+//clock_t start, finish;
 
 pthread_mutex_t barrier;  /* mutex semaphore for the barrier */
 pthread_cond_t go;        /* condition variable for leaving */
@@ -80,7 +81,7 @@ int main(int argc, char* argv[]) {
   stripSize = (gridSize-2)/numWorkers;
   InitializeGrids();
 
-  start = clock();
+  clock_gettime(CLOCK_MONOTONIC, &start);
   /* create the workers, then wait for them to finish */
   printf("Create the worker threads\n");
   for (i = 0; i < numWorkers; i++)
@@ -92,13 +93,13 @@ int main(int argc, char* argv[]) {
   for (i = 0; i < numWorkers; i++)
     pthread_join(workerid[i], NULL);
 
-  finish = clock();
+  clock_gettime(CLOCK_MONOTONIC, &finish);
   /* print the results */
   
   printf("number of iterations:  %d\nmaximum difference:  %e\n",
           numIters, maxdiff);
-  printf("start:  %ld   finish:  %ld\n", start, finish);
-  printf("elapsed time:  %f seconds\n", (double) (finish-start) / CLOCKS_PER_SEC);
+  printf("start:  %f   finish:  %f\n", start.tv_sec + (start.tv_nsec/1000000000.0), finish.tv_sec + (finish.tv_nsec/1000000000.0));
+  printf("elapsed time:  %f seconds\n", (double) (finish.tv_sec-start.tv_sec) + ((finish.tv_nsec - start.tv_nsec)/1000000000.0));
   results = fopen("results", "w");
   for (i = 1; i < gridSize-1; i++) {
     for (j = 1; j < gridSize-1; j++) {
@@ -135,15 +136,30 @@ void *Worker(void *arg) {
   
   while (maxdiff > EPSILON) {
     /* update my points */
+
+    /* OLD
     for (i = first; i < last; i++) {
       for (j = 1; j < gridSize-1; j++) {
         grid2[IDX(gridSize,i,j)] = (grid1[IDX(gridSize,i-1,j)] + grid1[IDX(gridSize,i+1,j)] + 
 				    grid1[IDX(gridSize,i,j-1)] + grid1[IDX(gridSize,i,j+1)]) * 0.25;
       }
     }
+    */
+
+    int ix = first*gridSize;
+    for (i = first; i < last; i++) {
+      //int ix = i*gridSize;
+      for (j = 1; j < gridSize-1; j++) {
+        grid2[ix+j] = (grid1[ix-gridSize+j] + grid1[ix+gridSize+j] + 
+		       grid1[ix+j-1] + grid1[ix+j+1]) * 0.25;
+      }
+      ix+=gridSize;
+    }
     Barrier();
     /* update my points again */
     localDiff = 0.0;
+
+    /* OLD
     for (i = first; i < last; i++) {
       for (j = 1; j < gridSize-1; j++) {
         grid1[IDX(gridSize,i,j)] = (grid2[IDX(gridSize,i-1,j)] + grid2[IDX(gridSize,i+1,j)] + 
@@ -157,6 +173,24 @@ void *Worker(void *arg) {
         }
       }
     }
+    */
+
+    ix = first*gridSize;
+    for (i = first; i < last; i++) {
+      //int ix = i*gridSize;
+      for (j = 1; j < gridSize-1; j++) {
+        grid1[ix+j] = (grid2[ix-gridSize+j] + grid2[ix+gridSize+j] + 
+		       grid2[ix+j-1] + grid2[ix+j+1]) * 0.25;
+        temp = grid1[ix+j] - grid2[ix+j];
+        if (temp < 0) {
+          temp *= -1;
+        }
+        if (localDiff < temp) {
+          localDiff = temp;
+        }
+      }
+      ix+=gridSize;
+    }    
     maxDiff[myid] = localDiff;
     Barrier();
     if (myid == 0) {
