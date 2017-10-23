@@ -12,7 +12,7 @@
   Base code provided by Dr. Michael Meehan;
   edited for experimentation purposes
 
-  Modified 10/22/2017 by Alexander Lee
+  Modified 10/23/2017 by Alexander Lee
 */
 
 #define _REENTRANT
@@ -82,6 +82,8 @@ int main(int argc, char* argv[]) {
   
   stripSize = (gridSize-2)/numWorkers;
   InitializeGrids();
+
+  printf("gridSize: %d, number of threads: %d\n", gridSize, numWorkers);
 
   clock_gettime(CLOCK_MONOTONIC, &start);
   /* create the workers, then wait for them to finish */

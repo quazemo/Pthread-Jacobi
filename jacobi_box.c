@@ -160,6 +160,8 @@ int main(int argc, char* argv[]) {
   }
   */
 
+  printf("gridSize: %d, number of threads: %d\n", gridSize, numWorkers);
+
   clock_gettime(CLOCK_MONOTONIC, &start);
   /* create the workers, then wait for them to finish */
   printf("Create the worker threads\n");

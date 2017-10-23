@@ -12,6 +12,8 @@
    Base code provided by Dr. Michael Meehan;
    edited for experimentation purposes
 
+   Modified 10/23/2017 by Alexander Lee
+
 */
 #define IDX(x, i, j) ((i)*(x)+(j))
 
@@ -19,10 +21,13 @@
 #include <stdio.h>
 #include <sys/times.h>
 #include <limits.h>
+#include <time.h>
 #define FAILURE 0
 #define SUCCESS 1
 struct tms buffer;        /* used for timing */
-clock_t start, finish;
+//clock_t start, finish;
+
+struct timespec start, finish;
 
 int x, y, xm1, ym1;
 double *grid1;
@@ -75,7 +80,7 @@ void Worker(double *grid1, double *grid2 )
         maxdiff = temp;
     }
   }
-  printf("maxdiff=%f, Iterations=%d\n",maxdiff,numIters);
+  //printf("maxdiff=%f, Iterations=%d\n",maxdiff,numIters);
   }
 }
 
@@ -127,7 +132,7 @@ int main(int argc, char *argv[])
   }
   x = atoi(argv[1]) + 2;
   y = atoi(argv[2]) + 2;
-  eps = atof(argv[2]);
+  eps = atof(argv[3]);
   if (x <=0)
     { printf("length needs to be greater than 0");
       badParm=1;
@@ -148,17 +153,24 @@ int main(int argc, char *argv[])
  grid1=(double *) malloc(gridsize);
  grid2=(double *) malloc(gridsize);
  InitializeGrids(grid1,grid2);
- PrintGrid(grid1);
- printf("\n");
- PrintGrid(grid2);
- start = times(&buffer);
+ //PrintGrid(grid1);
+ //printf("\n");
+ //PrintGrid(grid2);
+ //start = times(&buffer);
+
+ clock_gettime(CLOCK_MONOTONIC, &start);
+
  Worker(grid1,grid2);
- finish = times(&buffer);
+
+ clock_gettime(CLOCK_MONOTONIC, &finish);
+ //finish = times(&buffer);
  /* print the results */
  printf("number of iterations:  %d\nmaximum difference:  %e\n",numIters, maxdiff);
- printf("start:  %ld   finish:  %ld\n", start, finish);
- printf("elapsed time:  %ld\n", finish-start);
- PrintGrid(grid1);
+ //printf("start:  %ld   finish:  %ld\n", start, finish);
+ //printf("elapsed time:  %ld\n", finish-start);
+  printf("start:  %f   finish:  %f\n", start.tv_sec + (start.tv_nsec/1000000000.0), finish.tv_sec + (finish.tv_nsec/1000000000.0));
+  printf("elapsed time:  %f seconds\n", (double) (finish.tv_sec-start.tv_sec) + ((finish.tv_nsec - start.tv_nsec)/1000000000.0));
+ //PrintGrid(grid1);
  exit(SUCCESS);
 }
 
