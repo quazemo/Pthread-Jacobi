@@ -71,6 +71,8 @@ int main(int argc, char *argv[]) {
   //start = times(&buffer);
 
   clock_gettime(CLOCK_MONOTONIC, &start);
+
+  printf("gridSize: %d, number of threads: %d\n", gridSize, numWorkers);
   
   /* create the workers, then wait for them to finish */
   printf("Create the worker threads\n");

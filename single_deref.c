@@ -97,9 +97,10 @@ int main(int argc, char* argv[]) {
   for (i = 0; i < numWorkers; i++)
     pthread_join(workerid[i], NULL);
 
-  finish = times(&buffer);
-  /* print the results */
+  //finish = times(&buffer);
+  clock_gettime(CLOCK_MONOTONIC, &finish);
   
+  /* print the results */
   printf("number of iterations:  %d\nmaximum difference:  %e\n",
           numIters, maxdiff);
   //printf("start:  %ld   finish:  %ld\n", start, finish);
