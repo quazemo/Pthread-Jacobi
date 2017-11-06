@@ -1,14 +1,18 @@
 /* Jacobi iteration using pthreads
 
    usage on Linux:
-     gcc jacobi.c -lpthread -o jacobi
-     jacobi gridSize numWorkers numIters
+     gcc -g base.c -lpthread -o base
+     base gridSize numWorkers
      
-  Code provided by Dr. Meehan
+     Brendan Baalke
+     Iris Larsen
+     Alexander Lee
+     CSCI 415, Fall Quarter, 2017
   
-  edited by Iris Larsen to utilize EPSILON
-  instead of numIters
+     Base code provided by Dr. Michael Meehan;
+     edited for experimentation purposes
 
+     utilizes EPSILON instead of numIters
 */
 
 #define _REENTRANT
@@ -19,17 +23,23 @@
 #include <sys/times.h>
 #include <limits.h>
 #define SHARED 1
-#define MAXGRID 10000   /* maximum grid size, including boundaries */
+#define MAXGRID 7000   /* maximum grid size, including boundaries */
 #define MAXWORKERS 20  /* maximum number of worker threads */
-#define EPSILON 0.00001
+#define EPSILON 0.0001 /* threshold for convergence */
+#define num_runs 1000
 
+static __inline__ unsigned long Gettsc(void);
 void *Worker(void *);
 void InitializeGrids();
 void Barrier();
 
-struct tms buffer;        /* used for timing */
-//clock_t start, finish;
-struct timespec start, finish;
+struct tms buffer, start_struc, finish_struc;        /* used for timing */
+clock_t start, finish, time_sample, least_time;
+unsigned long least_run ;
+
+unsigned long cycles, start_tsc, end_tsc;
+unsigned long cycles_table[num_runs];
+clock_t time_table[num_runs];
 
 pthread_mutex_t barrier;  /* mutex semaphore for the barrier */
 pthread_cond_t go;        /* condition variable for leaving */
@@ -48,7 +58,7 @@ int main(int argc, char *argv[]) {
   /* thread ids and attributes */
   pthread_t workerid[MAXWORKERS];
   pthread_attr_t attr;
-  int i, j;
+  int i, j, runs;
   long li;
   numIters = 0;
   maxdiff = EPSILON + 1;
@@ -65,40 +75,61 @@ int main(int argc, char *argv[]) {
   /* read command line and initialize grids */
   gridSize = atoi(argv[1]);
   numWorkers = atoi(argv[2]);
-  stripSize = gridSize / numWorkers;
-  InitializeGrids();
-
-  //start = times(&buffer);
-
-  clock_gettime(CLOCK_MONOTONIC, &start);
 
   printf("gridSize: %d, number of threads: %d\n", gridSize, numWorkers);
   
-  /* create the workers, then wait for them to finish */
-  printf("Create the worker threads\n");
-  for (i = 0; i < numWorkers; i++) {
-      li=i;
-      pthread_create(&workerid[i], &attr, Worker, (void *) li);
-    }
-  printf("Wait for all worker threads to finish\n");
-  for (i = 0; i < numWorkers; i++)
-    pthread_join(workerid[i], NULL);
+  stripSize = gridSize / numWorkers;
+  InitializeGrids();
 
-  //finish = times(&buffer);
-  clock_gettime(CLOCK_MONOTONIC, &finish);
+  for (runs=0; runs<num_runs; runs++)
+    {
+      maxdiff=99999.9;
+      times(&start_struc);
+      start_tsc=Gettsc();
   
-  /* print the results */
+      /* create the workers, then wait for them to finish */
+      //printf("Create the worker threads\n");
+      for (i = 0; i < numWorkers; i++) {
+	li=i;
+	pthread_create(&workerid[i], &attr, Worker, (void *) li);
+      }
+      //printf("Wait for all worker threads to finish\n");
+      for (i = 0; i < numWorkers; i++)
+	pthread_join(workerid[i], NULL);
+
+      end_tsc=Gettsc();
+      times(&finish_struc);
+
+      cycles= (end_tsc > start_tsc)? end_tsc-start_tsc : (ULONG_MAX-start_tsc + end_tsc) ;
+      cycles_table[runs]=cycles;
+      time_sample=finish_struc.tms_utime - start_struc.tms_utime;
+      time_table[runs]=time_sample;
+
+      InitializeGrids();
+    }
+
+  /* print the results 
   for (i = 0; i < numWorkers; i++)
     if (maxdiff < maxDiff[i])
       maxdiff = maxDiff[i];
   printf("number of iterations:  %d\nmaximum difference:  %e\n",
           numIters, maxdiff);
-  //printf("start:  %ld   finish:  %ld\n", start, finish);
-  //printf("elapsed time:  %ld\n", finish-start);
+  */
 
-  printf("start:  %f   finish:  %f\n", start.tv_sec + (start.tv_nsec/1000000000.0), finish.tv_sec + (finish.tv_nsec/1000000000.0));
-  printf("elapsed time:  %f seconds\n", (double) (finish.tv_sec-start.tv_sec) + ((finish.tv_nsec - start.tv_nsec)/1000000000.0));
+  least_run=ULONG_MAX;
+  least_time=99999;
+  for (runs=0; runs<num_runs; runs++)
+    {
+      //printf("number of cycles:  %lu\n", cycles_table[runs]);
+      //printf("utime:  %ld\n", time_table[runs]);
+      least_run=(cycles_table[runs] < least_run) ? cycles_table[runs] : least_run;
+      least_time=(time_table[runs] < least_time) ? time_table[runs] : least_time;
+    }
+  printf("lowest number of cycles=%lu\n",least_run);
+  printf("lowest time=%ld\n",least_time);
   
+
+  /*
   results = fopen("results", "w");
   for (i = 1; i <= gridSize; i++) {
     for (j = 1; j <= gridSize; j++) {
@@ -106,6 +137,7 @@ int main(int argc, char *argv[]) {
     }
     fprintf(results, "\n");
   }
+  */
 }
 
 
@@ -119,7 +151,7 @@ void *Worker(void *arg) {
   int i, j, iters;
   int first, last;
 
-  printf("worker %ld (pthread id %lu has started\n", myid, pthread_self());
+  //printf("worker %ld (pthread id %lu has started\n", myid, pthread_self());
 
   /* determine first and last rows of my strip of the grids */
   first = myid * stripSize + 1;
@@ -203,4 +235,12 @@ void Barrier() {
   } else
     pthread_cond_wait(&go, &barrier);
   pthread_mutex_unlock(&barrier);
+}
+
+static __inline__ unsigned long Gettsc(void)
+{
+  unsigned a, d;
+  asm ("cpuid");
+  asm volatile("rdtscp" : "=a" (a), "=d" (d)); 
+  return ((unsigned long)a) | (((unsigned long)d) << 32); 
 }

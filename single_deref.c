@@ -1,7 +1,7 @@
 /* Jacobi iteration using pthreads
 
    usage on Linux:
-     gcc jacobi.c -lpthread -o jacobi
+     gcc single_deref.c -lpthread -o single_deref
      jacobi gridSize numWorkers
   
   Brendan Baalke
@@ -26,42 +26,47 @@
 #include <sys/times.h>
 #include <limits.h>
 #define SHARED 1
-#define MAXGRID 10000   /* maximum grid size, including boundaries */
+#define MAXGRID 7000   /* maximum grid size, including boundaries */
 #define MAXWORKERS 20  /* maximum number of worker threads */
-#define EPSILON 0.00001 /* threshold for convergence */
+#define EPSILON 0.0001 /* threshold for convergence */
+#define num_runs 1000
 
+static __inline__ unsigned long Gettsc(void);
 void *Worker(void *);
 void InitializeGrids();
 void Barrier();
 
-struct tms buffer;        /* used for timing */
-//clock_t start, finish;
-struct timespec start, finish;
+struct tms buffer, start_struc, finish_struc;        /* used for timing */
+clock_t start, finish, time_sample, least_time;
+unsigned long least_run ;
+
+unsigned long cycles, start_tsc, end_tsc;
+unsigned long cycles_table[num_runs];
+clock_t time_table[num_runs];
 
 pthread_mutex_t barrier;  /* mutex semaphore for the barrier */
 pthread_cond_t go;        /* condition variable for leaving */
 int numArrived = 0;       /* count of the number who have arrived */
 
 int gridSize, numWorkers, numIters, stripSize;
+double maxdiff;
 double maxDiff[MAXWORKERS];
+//double grid1[MAXGRID][MAXGRID], grid2[MAXGRID][MAXGRID];
 double* grid1;
 double* grid2;
-double maxdiff;
-
 
 /* main() -- read command line, initialize grids, and create threads
              when the threads are done, print the results */
 
-int main(int argc, char* argv[]) {
+int main(int argc, char *argv[]) {
   /* thread ids and attributes */
   pthread_t workerid[MAXWORKERS];
   pthread_attr_t attr;
-  int i, j;
+  int i, j, runs;
   long li;
-  maxdiff = EPSILON + 1;
   numIters = 0;
+  maxdiff = EPSILON + 1;
   FILE *results;
-  
 
   /* set global thread attributes */
   pthread_attr_init(&attr);
@@ -74,50 +79,71 @@ int main(int argc, char* argv[]) {
   /* read command line and initialize grids */
   gridSize = atoi(argv[1]);
   numWorkers = atoi(argv[2]);
-  
-  grid1 = malloc(sizeof(double) * (gridSize + 2) * (gridSize + 2));
-  grid2 = malloc(sizeof(double) * (gridSize + 2) * (gridSize + 2));
+
+  grid1 = malloc((gridSize + 2) * (gridSize + 2) * sizeof(double));
+  grid2 = malloc((gridSize + 2) * (gridSize + 2) * sizeof(double));
+
+  printf("gridSize: %d, number of threads: %d\n", gridSize, numWorkers);
   
   stripSize = gridSize / numWorkers;
   InitializeGrids();
 
-  //start = times(&buffer);
-  clock_gettime(CLOCK_MONOTONIC, &start);
-  
-  printf("gridSize: %d, number of threads: %d\n", gridSize, numWorkers);
-  
-  /* create the workers, then wait for them to finish */
-  printf("Create the worker threads\n");
-  for (i = 0; i < numWorkers; i++)
+  for (runs=0; runs<num_runs; runs++)
     {
-      li = i;
-      pthread_create(&workerid[i], &attr, Worker, (void *) li);
-    }
-  printf("Wait for all worker threads to finish\n");
-  for (i = 0; i < numWorkers; i++)
-    pthread_join(workerid[i], NULL);
-
-  //finish = times(&buffer);
-  clock_gettime(CLOCK_MONOTONIC, &finish);
+      maxdiff=99999.9;
+      times(&start_struc);
+      start_tsc=Gettsc();
   
-  /* print the results */
+      /* create the workers, then wait for them to finish */
+      //printf("Create the worker threads\n");
+      for (i = 0; i < numWorkers; i++) {
+	li=i;
+	pthread_create(&workerid[i], &attr, Worker, (void *) li);
+      }
+      //printf("Wait for all worker threads to finish\n");
+      for (i = 0; i < numWorkers; i++)
+	pthread_join(workerid[i], NULL);
+
+      end_tsc=Gettsc();
+      times(&finish_struc);
+
+      cycles= (end_tsc > start_tsc)? end_tsc-start_tsc : (ULONG_MAX-start_tsc + end_tsc) ;
+      cycles_table[runs]=cycles;
+      time_sample=finish_struc.tms_utime - start_struc.tms_utime;
+      time_table[runs]=time_sample;
+
+      InitializeGrids();
+    }
+
+  /* print the results 
+  for (i = 0; i < numWorkers; i++)
+    if (maxdiff < maxDiff[i])
+      maxdiff = maxDiff[i];
   printf("number of iterations:  %d\nmaximum difference:  %e\n",
           numIters, maxdiff);
-  //printf("start:  %ld   finish:  %ld\n", start, finish);
-  //printf("elapsed time:  %ld\n", finish-start);
+  */
 
-  printf("start:  %f   finish:  %f\n", start.tv_sec + (start.tv_nsec/1000000000.0), finish.tv_sec + (finish.tv_nsec/1000000000.0));
-  printf("elapsed time:  %f seconds\n", (double) (finish.tv_sec-start.tv_sec) + ((finish.tv_nsec - start.tv_nsec)/1000000000.0));
-  
+  least_run=ULONG_MAX;
+  least_time=99999;
+  for (runs=0; runs<num_runs; runs++)
+    {
+      //printf("number of cycles:  %lu\n", cycles_table[runs]);
+      //printf("utime:  %ld\n", time_table[runs]);
+      least_run=(cycles_table[runs] < least_run) ? cycles_table[runs] : least_run;
+      least_time=(time_table[runs] < least_time) ? time_table[runs] : least_time;
+    }
+  printf("lowest number of cycles=%lu\n",least_run);
+  printf("lowest time=%ld\n",least_time);
+
+  /*
   results = fopen("results", "w");
-  for (i = gridSize + 3; i < (gridSize + 2) * (gridSize + 2); i += gridSize + 2) {
-    for (j = 0; j < gridSize; j++) {
+  for (i = 0; i < (gridSize + 2) * (gridSize + 2); i += gridSize + 2) {
+    for (j = 0; j < gridSize + 2; j++) {
       fprintf(results, "%f ", grid2[i + j]);
     }
     fprintf(results, "\n");
   }
-  free(grid1);
-  free(grid2);
+  */
 }
 
 
@@ -131,20 +157,25 @@ void *Worker(void *arg) {
   int i, j;
   int first, last;
 
-  printf("worker %ld (pthread id %lu has started\n", myid, pthread_self());
+  //printf("worker %ld (pthread id %lu has started\n", myid, pthread_self());
 
   /* determine first and last rows of my strip of the grids */
   first = (myid * stripSize * (gridSize + 2)) + gridSize + 3;
-  last = first + (stripSize * (gridSize + 2));
+  //last = first + (stripSize * (gridSize + 2));
+
+  if(myid == numWorkers-1)
+    last = (gridSize + 2) * (gridSize + 1) - 1 ;
+  else
+    last = first + (stripSize * (gridSize + 2));
   
   while (maxdiff > EPSILON) {
     /* update my points */
-    for (i = first; i < last; i += gridSize + 2) {
+    for (i = first; i < last; i+= (gridSize + 2)) {
       for (j = 0; j < gridSize; j++) {
         grid2[i + j] = (
           grid1[i + j - gridSize - 2] + //one row up
           grid1[i + j + gridSize + 2] + //one row down
-          grid1[i + j-1] + //one column left
+          grid1[i + j - 1] + //one column left
           grid1[i + j + 1]) //one column right
           * 0.25; //average the four points
       }
@@ -152,12 +183,12 @@ void *Worker(void *arg) {
     Barrier();
     /* update my points again, reverse grids */
     localDiff = 0.0;
-    for (i = first; i < last; i += gridSize + 2) {
+    for (i = first; i < last; i+= (gridSize + 2)) {
       for (j = 0; j < gridSize; j++) {
         grid1[i + j] = (
           grid2[i + j - gridSize - 2] + //one row up
           grid2[i + j + gridSize + 2] + //one row down
-          grid2[i + j-1] + //one column left
+          grid2[i + j - 1] + //one column left
           grid2[i + j + 1]) //one column right
           * 0.25; //average the four points
         temp = grid1[i + j] - grid2[i + j];
@@ -188,12 +219,12 @@ void *Worker(void *arg) {
 void InitializeGrids() {
   /* initialize the grids (grid1 and grid2)
      set boundaries to 1.0 and interior points to 0.0  */
-  int i;
-  for (i = 0; i < (gridSize + 2)  * (gridSize + 2); i++) {
+  int i, j;
+  for (i = 0; i < (gridSize+2) * (gridSize+2); i++) {
       grid1[i] = 0.0;
       grid2[i] = 0.0;
   }
-  for (i = 0; i < gridSize + 2; i++) {
+  for (i = 0; i < (gridSize+2); i++) {
     grid1[i] = 1.0; //top row
     grid1[((gridSize + 2) * (gridSize + 2)) - i - 1] = 1.0; //bottom row
     grid1[i * (gridSize + 2)] = 1.0; //far left column
@@ -216,3 +247,12 @@ void Barrier() {
     pthread_cond_wait(&go, &barrier);
   pthread_mutex_unlock(&barrier);
 }
+
+static __inline__ unsigned long Gettsc(void)
+{
+  unsigned a, d;
+  asm ("cpuid");
+  asm volatile("rdtscp" : "=a" (a), "=d" (d)); 
+  return ((unsigned long)a) | (((unsigned long)d) << 32); 
+}
+

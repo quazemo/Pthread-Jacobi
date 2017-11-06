@@ -1,7 +1,7 @@
 /* Jacobi iteration plain vanilla sequential version
 
    usage on Linux:
-     gcc jacobi-seq.c  -o jacobi-seq
+     gcc jacobi-seq3nop.c  -o jacobi-seq
      jacobi x y epsilon
             columns rows
 
